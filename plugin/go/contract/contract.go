@@ -14,28 +14,33 @@ import (
 
 /* This file contains the base contract implementation that overrides the basic 'transfer' functionality */
 
-// PluginConfig: the configuration of the contract
 var ContractConfig = &PluginConfig{
-	Name:                  "go_plugin_contract",
-	Id:                    1,
-	Version:               1,
-	SupportedTransactions: []string{"send"},
+	Name:    "go_plugin_contract",
+	Id:      1,
+	Version: 1,
+	SupportedTransactions: []string{
+		"send",
+		"create_will",
+		"reset_timer",
+		"claim_will",
+		"cancel_will",
+	},
 	TransactionTypeUrls: []string{
 		"type.googleapis.com/types.MessageSend",
+		"type.googleapis.com/types.MessageCreateWill",
+		"type.googleapis.com/types.MessageResetTimer",
+		"type.googleapis.com/types.MessageClaimWill",
+		"type.googleapis.com/types.MessageCancelWill",
 	},
 	EventTypeUrls: nil,
 }
 
-// init sets FileDescriptorProtos after ensuring .pb.go files are initialized
 func init() {
-	// Explicitly initialize the proto files first to ensure File_*_proto are set
 	file_account_proto_init()
 	file_event_proto_init()
 	file_plugin_proto_init()
 	file_tx_proto_init()
-
 	var fds [][]byte
-	// Include google/protobuf/any.proto first as it's a dependency of event.proto and tx.proto
 	for _, file := range []protoreflect.FileDescriptor{
 		anypb.File_google_protobuf_any_proto,
 		File_account_proto, File_event_proto, File_plugin_proto, File_tx_proto,
@@ -46,27 +51,24 @@ func init() {
 	ContractConfig.FileDescriptorProtos = fds
 }
 
-// Contract() defines the smart contract that implements the extended logic of the nested chain
 type Contract struct {
-	Config    Config
-	FSMConfig *PluginFSMConfig // fsm configuration
-	plugin    *Plugin          // plugin connection
-	fsmId     uint64           // the id of the requesting fsm
+	Config        Config
+	FSMConfig     *PluginFSMConfig
+	plugin        *Plugin
+	fsmId         uint64
+	currentHeight uint64
 }
 
-// Genesis() implements logic to import a json file to create the state at height 0 and export the state at any height
 func (c *Contract) Genesis(_ *PluginGenesisRequest) *PluginGenesisResponse {
-	return &PluginGenesisResponse{} // TODO map out original token holders
+	return &PluginGenesisResponse{}
 }
 
-// BeginBlock() is code that is executed at the start of `applying` the block
-func (c *Contract) BeginBlock(_ *PluginBeginRequest) *PluginBeginResponse {
+func (c *Contract) BeginBlock(request *PluginBeginRequest) *PluginBeginResponse {
+	c.currentHeight = request.Height
 	return &PluginBeginResponse{}
 }
 
-// CheckTx() is code that is executed to statelessly validate a transaction
 func (c *Contract) CheckTx(request *PluginCheckRequest) *PluginCheckResponse {
-	// validate fee
 	resp, err := c.plugin.StateRead(c, &PluginStateReadRequest{
 		Keys: []*PluginKeyRead{
 			{QueryId: rand.Uint64(), Key: KeyForFeeParams()},
@@ -74,73 +76,74 @@ func (c *Contract) CheckTx(request *PluginCheckRequest) *PluginCheckResponse {
 	if err == nil {
 		err = resp.Error
 	}
-	// handle error
 	if err != nil {
 		return &PluginCheckResponse{Error: err}
 	}
-	// convert bytes into fee parameters
 	minFees := new(FeeParams)
 	if err = Unmarshal(resp.Results[0].Entries[0].Value, minFees); err != nil {
 		return &PluginCheckResponse{Error: err}
 	}
-	// check for the minimum fee
 	if request.Tx.Fee < minFees.SendFee {
 		return &PluginCheckResponse{Error: ErrTxFeeBelowStateLimit()}
 	}
-	// get the message
 	msg, err := FromAny(request.Tx.Msg)
 	if err != nil {
 		return &PluginCheckResponse{Error: err}
 	}
-	// handle the message
 	switch x := msg.(type) {
 	case *MessageSend:
 		return c.CheckMessageSend(x)
+	case *MessageCreateWill:
+		return c.CheckMessageCreateWill(x)
+	case *MessageResetTimer:
+		return c.CheckMessageResetTimer(x)
+	case *MessageClaimWill:
+		return c.CheckMessageClaimWill(x)
+	case *MessageCancelWill:
+		return c.CheckMessageCancelWill(x)
 	default:
 		return &PluginCheckResponse{Error: ErrInvalidMessageCast()}
 	}
 }
 
-// DeliverTx() is code that is executed to apply a transaction
 func (c *Contract) DeliverTx(request *PluginDeliverRequest) *PluginDeliverResponse {
-	// get the message
 	msg, err := FromAny(request.Tx.Msg)
 	if err != nil {
 		return &PluginDeliverResponse{Error: err}
 	}
-	// handle the message
 	switch x := msg.(type) {
 	case *MessageSend:
 		return c.DeliverMessageSend(x, request.Tx.Fee)
+	case *MessageCreateWill:
+		return c.DeliverMessageCreateWill(x, request.Tx.Fee)
+	case *MessageResetTimer:
+		return c.DeliverMessageResetTimer(x, request.Tx.Fee)
+	case *MessageClaimWill:
+		return c.DeliverMessageClaimWill(x, request.Tx.Fee)
+	case *MessageCancelWill:
+		return c.DeliverMessageCancelWill(x, request.Tx.Fee)
 	default:
 		return &PluginDeliverResponse{Error: ErrInvalidMessageCast()}
 	}
 }
 
-// EndBlock() is code that is executed at the end of 'applying' a block
 func (c *Contract) EndBlock(_ *PluginEndRequest) *PluginEndResponse {
 	return &PluginEndResponse{}
 }
 
-// CheckMessageSend() statelessly validates a 'send' message
 func (c *Contract) CheckMessageSend(msg *MessageSend) *PluginCheckResponse {
-	// check sender address
 	if len(msg.FromAddress) != 20 {
 		return &PluginCheckResponse{Error: ErrInvalidAddress()}
 	}
-	// check recipient address
 	if len(msg.ToAddress) != 20 {
 		return &PluginCheckResponse{Error: ErrInvalidAddress()}
 	}
-	// check amount
 	if msg.Amount == 0 {
 		return &PluginCheckResponse{Error: ErrInvalidAmount()}
 	}
-	// return the authorized signers
 	return &PluginCheckResponse{Recipient: msg.ToAddress, AuthorizedSigners: [][]byte{msg.FromAddress}}
 }
 
-// DeliverMessageSend() handles a 'send' message
 func (c *Contract) DeliverMessageSend(msg *MessageSend, fee uint64) *PluginDeliverResponse {
 	log.Printf("DeliverMessageSend called: from=%x to=%x amount=%d fee=%d", msg.FromAddress, msg.ToAddress, msg.Amount, fee)
 	var (
@@ -149,49 +152,33 @@ func (c *Contract) DeliverMessageSend(msg *MessageSend, fee uint64) *PluginDeliv
 		fromQueryId, toQueryId, feeQueryId = rand.Uint64(), rand.Uint64(), rand.Uint64()
 		from, to, feePool                  = new(Account), new(Account), new(Pool)
 	)
-	// calculate the from key and to key
 	fromKey, toKey, feePoolKey = KeyForAccount(msg.FromAddress), KeyForAccount(msg.ToAddress), KeyForFeePool(c.Config.ChainId)
-	log.Printf("Keys: fromKey=%x toKey=%x feePoolKey=%x", fromKey, toKey, feePoolKey)
-	// get the from and to account
 	response, err := c.plugin.StateRead(c, &PluginStateReadRequest{
 		Keys: []*PluginKeyRead{
 			{QueryId: feeQueryId, Key: feePoolKey},
 			{QueryId: fromQueryId, Key: fromKey},
 			{QueryId: toQueryId, Key: toKey},
 		}})
-	// check for internal error
 	if err != nil {
-		log.Printf("StateRead error: %v", err)
 		return &PluginDeliverResponse{Error: err}
 	}
-	// ensure no error fsm error
 	if response.Error != nil {
-		log.Printf("StateRead FSM error: %v", response.Error)
 		return &PluginDeliverResponse{Error: response.Error}
 	}
-	log.Printf("StateRead returned %d results", len(response.Results))
-	// get the from bytes and to bytes
 	for _, resp := range response.Results {
-		log.Printf("Result QueryId=%d Entries=%d", resp.QueryId, len(resp.Entries))
 		if len(resp.Entries) == 0 {
-			log.Printf("WARNING: No entries for QueryId=%d", resp.QueryId)
 			continue
 		}
 		switch resp.QueryId {
 		case fromQueryId:
 			fromBytes = resp.Entries[0].Value
-			log.Printf("fromBytes len=%d", len(fromBytes))
 		case toQueryId:
 			toBytes = resp.Entries[0].Value
-			log.Printf("toBytes len=%d", len(toBytes))
 		case feeQueryId:
 			feePoolBytes = resp.Entries[0].Value
-			log.Printf("feePoolBytes len=%d", len(feePoolBytes))
 		}
 	}
-	// add fee to 'amount to deduct'
 	amountToDeduct := msg.Amount + fee
-	// convert the bytes to account structures
 	if err = Unmarshal(fromBytes, from); err != nil {
 		return &PluginDeliverResponse{Error: err}
 	}
@@ -201,24 +188,15 @@ func (c *Contract) DeliverMessageSend(msg *MessageSend, fee uint64) *PluginDeliv
 	if err = Unmarshal(feePoolBytes, feePool); err != nil {
 		return &PluginDeliverResponse{Error: err}
 	}
-	log.Printf("from.Amount=%d to.Amount=%d feePool.Amount=%d", from.Amount, to.Amount, feePool.Amount)
-	// if the account amount is less than the amount to subtract; return insufficient funds
 	if from.Amount < amountToDeduct {
-		log.Printf("ERROR: Insufficient funds: from.Amount=%d amountToDeduct=%d", from.Amount, amountToDeduct)
 		return &PluginDeliverResponse{Error: ErrInsufficientFunds()}
 	}
-	// for self-transfer, use same account data
 	if bytes.Equal(fromKey, toKey) {
 		to = from
 	}
-	// subtract from sender
 	from.Amount -= amountToDeduct
-	// add the fee to the 'fee pool'
 	feePool.Amount += fee
-	// add to recipient
 	to.Amount += msg.Amount
-	log.Printf("AFTER: from.Amount=%d to.Amount=%d feePool.Amount=%d", from.Amount, to.Amount, feePool.Amount)
-	// convert the accounts to bytes
 	fromBytes, err = Marshal(from)
 	if err != nil {
 		return &PluginDeliverResponse{Error: err}
@@ -231,9 +209,7 @@ func (c *Contract) DeliverMessageSend(msg *MessageSend, fee uint64) *PluginDeliv
 	if err != nil {
 		return &PluginDeliverResponse{Error: err}
 	}
-	// execute writes to the database
 	var resp *PluginStateWriteResponse
-	// if the from account is drained - delete the from account
 	if from.Amount == 0 {
 		resp, err = c.plugin.StateWrite(c, &PluginStateWriteRequest{
 			Sets: []*PluginSetOp{
@@ -252,40 +228,396 @@ func (c *Contract) DeliverMessageSend(msg *MessageSend, fee uint64) *PluginDeliv
 		})
 	}
 	if err != nil {
-		log.Printf("StateWrite internal error: %v", err)
 		return &PluginDeliverResponse{Error: err}
 	}
 	if resp.Error != nil {
-		log.Printf("StateWrite FSM error: %v", resp.Error)
 		return &PluginDeliverResponse{Error: resp.Error}
 	}
-	log.Printf("StateWrite SUCCESS!")
 	return &PluginDeliverResponse{}
 }
 
 var (
-	accountPrefix = []byte{1} // store key prefix for accounts
-	poolPrefix    = []byte{2} // store key prefix for pools
-	paramsPrefix  = []byte{7} // store key prefix for governance parameters
+	accountPrefix     = []byte{1}
+	poolPrefix        = []byte{2}
+	paramsPrefix      = []byte{7}
+	willPrefix        = []byte{3}
+	willCounterPrefix = []byte{4}
 )
 
-// KeyForAccount() returns the state database key for an account
 func KeyForAccount(addr []byte) []byte {
 	return JoinLenPrefix(accountPrefix, addr)
 }
-
-// KeyForFeeParams() returns the state database key for governance controlled 'fee parameters'
 func KeyForFeeParams() []byte {
 	return JoinLenPrefix(paramsPrefix, []byte("/f/"))
 }
-
-// KeyForFeeParams() returns the state database key for governance controlled 'fee parameters'
 func KeyForFeePool(chainId uint64) []byte {
 	return JoinLenPrefix(poolPrefix, formatUint64(chainId))
 }
-
+func KeyForWill(id uint64) []byte {
+	return JoinLenPrefix(willPrefix, formatUint64(id))
+}
+func KeyForWillCounter() []byte {
+	return JoinLenPrefix(willCounterPrefix, []byte("wc"))
+}
 func formatUint64(u uint64) []byte {
 	b := make([]byte, 8)
 	binary.BigEndian.PutUint64(b, u)
 	return b
+}
+
+func (c *Contract) CheckMessageCreateWill(msg *MessageCreateWill) *PluginCheckResponse {
+	if len(msg.OwnerAddress) != 20 {
+		return &PluginCheckResponse{Error: ErrInvalidAddress()}
+	}
+	if len(msg.BeneficiaryAddress) != 20 {
+		return &PluginCheckResponse{Error: ErrInvalidAddress()}
+	}
+	if msg.Amount == 0 {
+		return &PluginCheckResponse{Error: ErrInvalidAmount()}
+	}
+	if msg.ClaimAfterBlocks == 0 {
+		return &PluginCheckResponse{Error: ErrInvalidAmount()}
+	}
+	if len(msg.Message) > 280 {
+		return &PluginCheckResponse{Error: ErrInvalidAmount()}
+	}
+	return &PluginCheckResponse{AuthorizedSigners: [][]byte{msg.OwnerAddress}}
+}
+
+func (c *Contract) CheckMessageResetTimer(msg *MessageResetTimer) *PluginCheckResponse {
+	if len(msg.OwnerAddress) != 20 {
+		return &PluginCheckResponse{Error: ErrInvalidAddress()}
+	}
+	if msg.WillId == 0 {
+		return &PluginCheckResponse{Error: ErrInvalidAmount()}
+	}
+	return &PluginCheckResponse{AuthorizedSigners: [][]byte{msg.OwnerAddress}}
+}
+
+func (c *Contract) CheckMessageClaimWill(msg *MessageClaimWill) *PluginCheckResponse {
+	if len(msg.BeneficiaryAddress) != 20 {
+		return &PluginCheckResponse{Error: ErrInvalidAddress()}
+	}
+	if msg.WillId == 0 {
+		return &PluginCheckResponse{Error: ErrInvalidAmount()}
+	}
+	return &PluginCheckResponse{AuthorizedSigners: [][]byte{msg.BeneficiaryAddress}}
+}
+
+func (c *Contract) CheckMessageCancelWill(msg *MessageCancelWill) *PluginCheckResponse {
+	if len(msg.OwnerAddress) != 20 {
+		return &PluginCheckResponse{Error: ErrInvalidAddress()}
+	}
+	if msg.WillId == 0 {
+		return &PluginCheckResponse{Error: ErrInvalidAmount()}
+	}
+	return &PluginCheckResponse{AuthorizedSigners: [][]byte{msg.OwnerAddress}}
+}
+
+func (c *Contract) DeliverMessageCreateWill(msg *MessageCreateWill, fee uint64) *PluginDeliverResponse {
+	var (
+		ownerQueryId, counterQueryId, feeQueryId = rand.Uint64(), rand.Uint64(), rand.Uint64()
+		ownerBytes, counterBytes, feePoolBytes   []byte
+		owner, counter, feePool                  = new(Account), new(WillCounter), new(Pool)
+	)
+	response, err := c.plugin.StateRead(c, &PluginStateReadRequest{
+		Keys: []*PluginKeyRead{
+			{QueryId: ownerQueryId, Key: KeyForAccount(msg.OwnerAddress)},
+			{QueryId: counterQueryId, Key: KeyForWillCounter()},
+			{QueryId: feeQueryId, Key: KeyForFeePool(c.Config.ChainId)},
+		}})
+	if err != nil {
+		return &PluginDeliverResponse{Error: err}
+	}
+	if response.Error != nil {
+		return &PluginDeliverResponse{Error: response.Error}
+	}
+	for _, resp := range response.Results {
+		if len(resp.Entries) == 0 {
+			continue
+		}
+		switch resp.QueryId {
+		case ownerQueryId:
+			ownerBytes = resp.Entries[0].Value
+		case counterQueryId:
+			counterBytes = resp.Entries[0].Value
+		case feeQueryId:
+			feePoolBytes = resp.Entries[0].Value
+		}
+	}
+	if err = Unmarshal(ownerBytes, owner); err != nil {
+		return &PluginDeliverResponse{Error: err}
+	}
+	Unmarshal(counterBytes, counter)
+	if err = Unmarshal(feePoolBytes, feePool); err != nil {
+		return &PluginDeliverResponse{Error: err}
+	}
+	amountToDeduct := msg.Amount + fee
+	if owner.Amount < amountToDeduct {
+		return &PluginDeliverResponse{Error: ErrInsufficientFunds()}
+	}
+	counter.Count++
+	will := &Will{
+		Id:                 counter.Count,
+		OwnerAddress:       msg.OwnerAddress,
+		BeneficiaryAddress: msg.BeneficiaryAddress,
+		Amount:             msg.Amount,
+		ClaimAfterHeight:   c.currentHeight + msg.ClaimAfterBlocks,
+		OriginalBlocks:     msg.ClaimAfterBlocks,
+		Message:            msg.Message,
+		CreatedHeight:      c.currentHeight,
+		IsActive:           true,
+	}
+	owner.Amount -= amountToDeduct
+	feePool.Amount += fee
+	ownerBytes, _ = Marshal(owner)
+	counterBytes, _ = Marshal(counter)
+	feePoolBytes, _ = Marshal(feePool)
+	willBytes, _ := Marshal(will)
+	resp, err := c.plugin.StateWrite(c, &PluginStateWriteRequest{
+		Sets: []*PluginSetOp{
+			{Key: KeyForWill(will.Id), Value: willBytes},
+			{Key: KeyForWillCounter(), Value: counterBytes},
+			{Key: KeyForAccount(msg.OwnerAddress), Value: ownerBytes},
+			{Key: KeyForFeePool(c.Config.ChainId), Value: feePoolBytes},
+		},
+	})
+	if err != nil {
+		return &PluginDeliverResponse{Error: err}
+	}
+	if resp.Error != nil {
+		return &PluginDeliverResponse{Error: resp.Error}
+	}
+	log.Printf("Created Will %d for owner %x", will.Id, msg.OwnerAddress)
+	return &PluginDeliverResponse{}
+}
+
+func (c *Contract) DeliverMessageResetTimer(msg *MessageResetTimer, fee uint64) *PluginDeliverResponse {
+	var (
+		willQueryId, ownerQueryId, feeQueryId = rand.Uint64(), rand.Uint64(), rand.Uint64()
+		willBytes, ownerBytes, feePoolBytes   []byte
+		will, owner, feePool                  = new(Will), new(Account), new(Pool)
+	)
+	response, err := c.plugin.StateRead(c, &PluginStateReadRequest{
+		Keys: []*PluginKeyRead{
+			{QueryId: willQueryId, Key: KeyForWill(msg.WillId)},
+			{QueryId: ownerQueryId, Key: KeyForAccount(msg.OwnerAddress)},
+			{QueryId: feeQueryId, Key: KeyForFeePool(c.Config.ChainId)},
+		}})
+	if err != nil {
+		return &PluginDeliverResponse{Error: err}
+	}
+	if response.Error != nil {
+		return &PluginDeliverResponse{Error: response.Error}
+	}
+	for _, resp := range response.Results {
+		if len(resp.Entries) == 0 {
+			continue
+		}
+		switch resp.QueryId {
+		case willQueryId:
+			willBytes = resp.Entries[0].Value
+		case ownerQueryId:
+			ownerBytes = resp.Entries[0].Value
+		case feeQueryId:
+			feePoolBytes = resp.Entries[0].Value
+		}
+	}
+	if len(willBytes) == 0 {
+		return &PluginDeliverResponse{Error: NewError(15, DefaultModule, "will not found")}
+	}
+	if err = Unmarshal(willBytes, will); err != nil {
+		return &PluginDeliverResponse{Error: err}
+	}
+	if !bytes.Equal(will.OwnerAddress, msg.OwnerAddress) {
+		return &PluginDeliverResponse{Error: NewError(16, DefaultModule, "not the owner")}
+	}
+	if !will.IsActive {
+		return &PluginDeliverResponse{Error: NewError(17, DefaultModule, "will is not active")}
+	}
+	if err = Unmarshal(ownerBytes, owner); err != nil {
+		return &PluginDeliverResponse{Error: err}
+	}
+	if owner.Amount < fee {
+		return &PluginDeliverResponse{Error: ErrInsufficientFunds()}
+	}
+	if err = Unmarshal(feePoolBytes, feePool); err != nil {
+		return &PluginDeliverResponse{Error: err}
+	}
+	will.ClaimAfterHeight = c.currentHeight + will.OriginalBlocks
+	owner.Amount -= fee
+	feePool.Amount += fee
+	willBytes, _ = Marshal(will)
+	ownerBytes, _ = Marshal(owner)
+	feePoolBytes, _ = Marshal(feePool)
+	resp, err := c.plugin.StateWrite(c, &PluginStateWriteRequest{
+		Sets: []*PluginSetOp{
+			{Key: KeyForWill(will.Id), Value: willBytes},
+			{Key: KeyForAccount(msg.OwnerAddress), Value: ownerBytes},
+			{Key: KeyForFeePool(c.Config.ChainId), Value: feePoolBytes},
+		},
+	})
+	if err != nil {
+		return &PluginDeliverResponse{Error: err}
+	}
+	if resp.Error != nil {
+		return &PluginDeliverResponse{Error: resp.Error}
+	}
+	log.Printf("Reset timer for Will %d", will.Id)
+	return &PluginDeliverResponse{}
+}
+
+func (c *Contract) DeliverMessageClaimWill(msg *MessageClaimWill, fee uint64) *PluginDeliverResponse {
+	var (
+		willQueryId, benefQueryId, feeQueryId = rand.Uint64(), rand.Uint64(), rand.Uint64()
+		willBytes, benefBytes, feePoolBytes   []byte
+		will, beneficiary, feePool            = new(Will), new(Account), new(Pool)
+	)
+	response, err := c.plugin.StateRead(c, &PluginStateReadRequest{
+		Keys: []*PluginKeyRead{
+			{QueryId: willQueryId, Key: KeyForWill(msg.WillId)},
+			{QueryId: benefQueryId, Key: KeyForAccount(msg.BeneficiaryAddress)},
+			{QueryId: feeQueryId, Key: KeyForFeePool(c.Config.ChainId)},
+		}})
+	if err != nil {
+		return &PluginDeliverResponse{Error: err}
+	}
+	if response.Error != nil {
+		return &PluginDeliverResponse{Error: response.Error}
+	}
+	for _, resp := range response.Results {
+		if len(resp.Entries) == 0 {
+			continue
+		}
+		switch resp.QueryId {
+		case willQueryId:
+			willBytes = resp.Entries[0].Value
+		case benefQueryId:
+			benefBytes = resp.Entries[0].Value
+		case feeQueryId:
+			feePoolBytes = resp.Entries[0].Value
+		}
+	}
+	if len(willBytes) == 0 {
+		return &PluginDeliverResponse{Error: NewError(15, DefaultModule, "will not found")}
+	}
+	if err = Unmarshal(willBytes, will); err != nil {
+		return &PluginDeliverResponse{Error: err}
+	}
+	if !bytes.Equal(will.BeneficiaryAddress, msg.BeneficiaryAddress) {
+		return &PluginDeliverResponse{Error: NewError(18, DefaultModule, "not the beneficiary")}
+	}
+	if !will.IsActive {
+		return &PluginDeliverResponse{Error: NewError(17, DefaultModule, "will is not active")}
+	}
+	if c.currentHeight <= will.ClaimAfterHeight {
+		return &PluginDeliverResponse{Error: NewError(19, DefaultModule, "will not yet claimable")}
+	}
+	if err = Unmarshal(benefBytes, beneficiary); err != nil {
+		return &PluginDeliverResponse{Error: err}
+	}
+	if beneficiary.Amount < fee {
+		return &PluginDeliverResponse{Error: ErrInsufficientFunds()}
+	}
+	if err = Unmarshal(feePoolBytes, feePool); err != nil {
+		return &PluginDeliverResponse{Error: err}
+	}
+	beneficiary.Amount += will.Amount
+	beneficiary.Amount -= fee
+	feePool.Amount += fee
+	will.IsActive = false
+	willBytes, _ = Marshal(will)
+	benefBytes, _ = Marshal(beneficiary)
+	feePoolBytes, _ = Marshal(feePool)
+	resp, err := c.plugin.StateWrite(c, &PluginStateWriteRequest{
+		Sets: []*PluginSetOp{
+			{Key: KeyForWill(will.Id), Value: willBytes},
+			{Key: KeyForAccount(msg.BeneficiaryAddress), Value: benefBytes},
+			{Key: KeyForFeePool(c.Config.ChainId), Value: feePoolBytes},
+		},
+	})
+	if err != nil {
+		return &PluginDeliverResponse{Error: err}
+	}
+	if resp.Error != nil {
+		return &PluginDeliverResponse{Error: resp.Error}
+	}
+	log.Printf("Claimed Will %d by %x", will.Id, msg.BeneficiaryAddress)
+	return &PluginDeliverResponse{}
+}
+
+func (c *Contract) DeliverMessageCancelWill(msg *MessageCancelWill, fee uint64) *PluginDeliverResponse {
+	var (
+		willQueryId, ownerQueryId, feeQueryId = rand.Uint64(), rand.Uint64(), rand.Uint64()
+		willBytes, ownerBytes, feePoolBytes   []byte
+		will, owner, feePool                  = new(Will), new(Account), new(Pool)
+	)
+	response, err := c.plugin.StateRead(c, &PluginStateReadRequest{
+		Keys: []*PluginKeyRead{
+			{QueryId: willQueryId, Key: KeyForWill(msg.WillId)},
+			{QueryId: ownerQueryId, Key: KeyForAccount(msg.OwnerAddress)},
+			{QueryId: feeQueryId, Key: KeyForFeePool(c.Config.ChainId)},
+		}})
+	if err != nil {
+		return &PluginDeliverResponse{Error: err}
+	}
+	if response.Error != nil {
+		return &PluginDeliverResponse{Error: response.Error}
+	}
+	for _, resp := range response.Results {
+		if len(resp.Entries) == 0 {
+			continue
+		}
+		switch resp.QueryId {
+		case willQueryId:
+			willBytes = resp.Entries[0].Value
+		case ownerQueryId:
+			ownerBytes = resp.Entries[0].Value
+		case feeQueryId:
+			feePoolBytes = resp.Entries[0].Value
+		}
+	}
+	if len(willBytes) == 0 {
+		return &PluginDeliverResponse{Error: NewError(15, DefaultModule, "will not found")}
+	}
+	if err = Unmarshal(willBytes, will); err != nil {
+		return &PluginDeliverResponse{Error: err}
+	}
+	if !bytes.Equal(will.OwnerAddress, msg.OwnerAddress) {
+		return &PluginDeliverResponse{Error: NewError(16, DefaultModule, "not the owner")}
+	}
+	if !will.IsActive {
+		return &PluginDeliverResponse{Error: NewError(17, DefaultModule, "will is not active")}
+	}
+	if err = Unmarshal(ownerBytes, owner); err != nil {
+		return &PluginDeliverResponse{Error: err}
+	}
+	if owner.Amount < fee {
+		return &PluginDeliverResponse{Error: ErrInsufficientFunds()}
+	}
+	if err = Unmarshal(feePoolBytes, feePool); err != nil {
+		return &PluginDeliverResponse{Error: err}
+	}
+	owner.Amount += will.Amount
+	owner.Amount -= fee
+	feePool.Amount += fee
+	will.IsActive = false
+	willBytes, _ = Marshal(will)
+	ownerBytes, _ = Marshal(owner)
+	feePoolBytes, _ = Marshal(feePool)
+	resp, err := c.plugin.StateWrite(c, &PluginStateWriteRequest{
+		Sets: []*PluginSetOp{
+			{Key: KeyForWill(will.Id), Value: willBytes},
+			{Key: KeyForAccount(msg.OwnerAddress), Value: ownerBytes},
+			{Key: KeyForFeePool(c.Config.ChainId), Value: feePoolBytes},
+		},
+	})
+	if err != nil {
+		return &PluginDeliverResponse{Error: err}
+	}
+	if resp.Error != nil {
+		return &PluginDeliverResponse{Error: resp.Error}
+	}
+	log.Printf("Cancelled Will %d by owner %x", will.Id, msg.OwnerAddress)
+	return &PluginDeliverResponse{}
 }

@@ -1,0 +1,696 @@
+<!DOCTYPE html>
+<html lang="en" class="scroll-smooth">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WillChain | Trustless Digital Will Protocol</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&family=Space+Grotesk:wght@300;400;500;700&display=swap" rel="stylesheet">
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        will_bg: '#0a0e1a',
+                        will_card: 'rgba(255,255,255,0.03)',
+                        will_amber: '#f59e0b',
+                        will_secondary: '#78716c',
+                        will_success: '#10b981',
+                        will_danger: '#ef4444',
+                        will_text: '#f0f4ff',
+                        will_border: 'rgba(255,255,255,0.08)',
+                    },
+                    fontFamily: {
+                        sans: ['Space Grotesk', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'monospace'],
+                    },
+                }
+            }
+        }
+    </script>
+    <style type="text/css">
+        body { background-color: #0a0e1a; color: #f0f4ff; overflow-x: hidden; }
+        .glass { background: rgba(255, 255, 255, 0.03); backdrop-filter: blur(10px); border: 1px solid rgba(255, 255, 255, 0.08); }
+        .gold-glow:hover { box-shadow: 0 0 20px rgba(245, 158, 11, 0.2); border-color: rgba(245, 158, 11, 0.4); }
+        .scanline {
+            width: 100%; height: 100px; z-index: 5;
+            background: linear-gradient(0deg, rgba(245, 158, 11, 0) 0%, rgba(245, 158, 11, 0.05) 50%, rgba(245, 158, 11, 0) 100%);
+            opacity: 0.1; position: absolute; pointer-events: none; animation: scan 8s linear infinite;
+        }
+        @keyframes scan { from { top: -100px; } to { top: 100%; } }
+        .ring { border: 1px solid rgba(245, 158, 11, 0.2); border-radius: 50%; position: absolute; }
+        .ring-1 { width: 300px; height: 300px; animation: spin 20s linear infinite; }
+        .ring-2 { width: 450px; height: 450px; animation: spin 30s reverse linear infinite; }
+        .ring-3 { width: 600px; height: 600px; animation: spin 45s linear infinite; }
+        @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+        .tab-active { color: #f59e0b; border-bottom: 2px solid #f59e0b; }
+        #particles-canvas { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; }
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-track { background: #0a0e1a; }
+        ::-webkit-scrollbar-thumb { background: #222; border-radius: 10px; }
+        ::-webkit-scrollbar-thumb:hover { background: #f59e0b; }
+        input, textarea { background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.1); color: #fff; transition: all 0.3s; }
+        input:focus, textarea:focus { border-color: #f59e0b; outline: none; box-shadow: 0 0 10px rgba(245, 158, 11, 0.2); }
+        .fade-in { animation: fadeIn 0.5s ease-out forwards; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+    </style>
+</head>
+<body class="font-sans antialiased">
+    <div class="scanline"></div>
+    <header class="fixed top-0 w-full z-50 bg-will_bg/80 backdrop-blur-md border-b border-will_amber/30 px-6 py-4 flex items-center justify-between">
+        <div class="flex items-center gap-2">
+            <i class="fa-solid fa-vault text-will_amber text-xl"></i>
+            <span class="font-mono font-bold text-xl tracking-tighter">WILLCHAIN</span>
+        </div>
+        <nav class="hidden md:flex items-center gap-8 text-sm font-medium text-gray-400">
+            <a href="#" class="hover:text-will_amber transition-colors">Home</a>
+            <a href="#how-it-works" class="hover:text-will_amber transition-colors">How It Works</a>
+            <a href="#terminal" class="hover:text-will_amber transition-colors">Terminal</a>
+        </nav>
+        <div class="flex items-center gap-4">
+            <div class="flex items-center gap-2 bg-black/40 px-3 py-1.5 rounded-full border border-will_border shadow-inner">
+                <span class="relative flex h-2 w-2">
+                    <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-will_success opacity-75"></span>
+                    <span class="relative inline-flex rounded-full h-2 w-2 bg-will_success"></span>
+                </span>
+                <span class="font-mono text-[10px] text-will_success tracking-wider uppercase">Block #<span id="header-block">247</span></span>
+            </div>
+            <a href="#terminal" class="bg-will_amber hover:bg-amber-600 px-4 py-2 rounded text-black font-bold text-sm transition-all transform hover:scale-105 shadow-lg shadow-will_amber/10">Launch Terminal</a>
+        </div>
+    </header>
+
+    <main>
+        <section class="relative min-h-screen flex items-center pt-20 px-6 overflow-hidden">
+            <canvas id="particles-canvas"></canvas>
+            <div class="container mx-auto grid grid-cols-1 lg:grid-cols-10 gap-12 relative z-10">
+                <div class="lg:col-span-6 flex flex-col justify-center space-y-8">
+                    <div class="space-y-4">
+                        <span class="font-mono text-will_amber tracking-widest text-sm font-bold block">// WILLCHAIN_PROTOCOL</span>
+                        <h1 class="text-6xl md:text-8xl font-bold leading-tight tracking-tight">
+                            Your Legacy, <br/>
+                            <span class="text-white opacity-80 font-light italic text-5xl md:text-7xl block mb-2">Enforced by</span>
+                            <span class="text-will_amber">the Blockchain.</span>
+                        </h1>
+                        <p class="text-xl text-gray-400 max-w-xl leading-relaxed">
+                            The world's first trustless digital will protocol. Lock tokens. Set a timer. The chain does the rest. No lawyers, no middleman, just pure mathematics.
+                        </p>
+                    </div>
+                    <div class="flex flex-wrap gap-4 pt-4">
+                        <a href="#terminal" onclick="showTab('create')" class="bg-will_amber text-black px-8 py-4 rounded-lg font-bold text-lg hover:bg-amber-600 transition-all flex items-center gap-2">
+                            Create Your Will <i class="fa-solid fa-arrow-right"></i>
+                        </a>
+                        <a href="#how-it-works" class="border border-will_amber text-will_amber px-8 py-4 rounded-lg font-bold text-lg hover:bg-will_amber/10 transition-all">
+                            See How It Works
+                        </a>
+                    </div>
+                </div>
+                <div class="lg:col-span-4 hidden lg:flex items-center justify-center relative">
+                    <div class="ring ring-1"></div>
+                    <div class="ring ring-2"></div>
+                    <div class="ring ring-3"></div>
+                    <div class="absolute inset-0 flex flex-col items-center justify-center gap-24">
+                        <div class="glass px-4 py-2 rounded-full border border-will_amber/30 text-[10px] font-mono text-will_amber animate-pulse">// WILL_LOCKED</div>
+                        <div class="glass px-4 py-2 rounded-full border border-will_amber/30 text-[10px] font-mono text-will_amber translate-x-24 animate-pulse" style="animation-delay: 1s">// TIMER_ACTIVE</div>
+                        <div class="glass px-4 py-2 rounded-full border border-will_amber/30 text-[10px] font-mono text-will_amber -translate-x-24 animate-pulse" style="animation-delay: 2s">// BENEFICIARY_SET</div>
+                    </div>
+                    <i class="fa-solid fa-vault text-will_amber text-9xl transition-transform hover:scale-110 duration-700 cursor-pointer drop-shadow-[0_0_30px_rgba(245,158,11,0.2)]"></i>
+                </div>
+            </div>
+        </section>
+
+        <section class="py-24 bg-black/40 border-y border-will_border">
+            <div class="container mx-auto px-6">
+                <span class="font-mono text-will_amber tracking-widest text-xs font-bold block text-center mb-4 uppercase opacity-60">// THE_PROBLEM</span>
+                <h2 class="text-4xl font-bold text-center mb-16">Billions in crypto is lost forever every year.</h2>
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-8">
+                    <div class="glass p-8 rounded-2xl border-t-4 border-t-will_amber gold-glow transition-all">
+                        <div class="text-5xl font-bold text-will_amber mb-4">$2.3B+</div>
+                        <p class="text-gray-400 leading-relaxed">Lost in crypto per year due to no inheritance plan or misplaced private keys.</p>
+                    </div>
+                    <div class="glass p-8 rounded-2xl border-t-4 border-t-will_amber gold-glow transition-all">
+                        <div class="text-3xl font-bold text-will_amber mb-4">No Solution</div>
+                        <p class="text-gray-400 leading-relaxed">Traditional wills cannot transfer crypto assets without exposing private keys to middlemen.</p>
+                    </div>
+                    <div class="glass p-8 rounded-2xl border-t-4 border-t-will_amber gold-glow transition-all">
+                        <div class="text-3xl font-bold text-will_amber mb-4">Until Now</div>
+                        <p class="text-gray-400 leading-relaxed">WillChain enforces your wishes automatically on-chain through trustless execution.</p>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <section id="how-it-works" class="py-32 relative overflow-hidden bg-will_bg">
+            <div class="container mx-auto px-6">
+                <span class="font-mono text-will_amber tracking-widest text-xs font-bold block mb-4">// HOW_IT_WORKS</span>
+                <h2 class="text-5xl font-bold mb-20 tracking-tighter">Three Steps to Secure Your Legacy</h2>
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-16 relative">
+                    <div class="space-y-6 relative group">
+                        <div class="text-[12rem] font-bold text-will_amber/5 absolute -top-24 -left-8 leading-none select-none transition-all group-hover:text-will_amber/10">01</div>
+                        <div class="w-20 h-20 rounded-2xl bg-will_amber/10 border border-will_amber/30 flex items-center justify-center shadow-lg group-hover:scale-110 transition-transform">
+                            <i class="fa-solid fa-lock-open text-will_amber text-3xl"></i>
+                        </div>
+                        <h3 class="text-2xl font-bold">Create Your Will</h3>
+                        <p class="text-gray-500 leading-relaxed">Lock tokens, name your beneficiary, set a block timer, and leave a permanent farewell message.</p>
+                    </div>
+                    <div class="space-y-6 relative group">
+                        <div class="text-[12rem] font-bold text-will_amber/5 absolute -top-24 -left-8 leading-none select-none transition-all group-hover:text-will_amber/10">02</div>
+                        <div class="w-20 h-20 rounded-2xl bg-will_amber/10 border border-will_amber/30 flex items-center justify-center shadow-lg group-hover:scale-110 transition-transform">
+                            <i class="fa-solid fa-hourglass-half text-will_amber text-3xl"></i>
+                        </div>
+                        <h3 class="text-2xl font-bold">Stay Alive</h3>
+                        <p class="text-gray-500 leading-relaxed">Reset the timer periodically to prove you are still here. Simple as a single, gas-efficient transaction.</p>
+                    </div>
+                    <div class="space-y-6 relative group">
+                        <div class="text-[12rem] font-bold text-will_amber/5 absolute -top-24 -left-8 leading-none select-none transition-all group-hover:text-will_amber/10">03</div>
+                        <div class="w-20 h-20 rounded-2xl bg-will_amber/10 border border-will_amber/30 flex items-center justify-center shadow-lg group-hover:scale-110 transition-transform">
+                            <i class="fa-solid fa-key text-will_amber text-3xl"></i>
+                        </div>
+                        <h3 class="text-2xl font-bold">Beneficiary Claims</h3>
+                        <p class="text-gray-500 leading-relaxed">If the timer expires, your beneficiary can claim the locked tokens automatically through the protocol.</p>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <section id="terminal" class="py-32 bg-black/60 relative border-t border-will_border">
+            <div class="container mx-auto px-6">
+                <div class="flex flex-col md:flex-row md:items-end justify-between gap-8 mb-12">
+                    <div class="space-y-3">
+                        <span class="font-mono text-will_amber tracking-widest text-xs font-bold block">// PROTOCOL_TERMINAL</span>
+                        <h2 class="text-6xl font-bold tracking-tighter">WillChain Terminal</h2>
+                    </div>
+                    <div class="flex bg-black/40 p-1.5 rounded-xl border border-will_border select-none shadow-inner">
+                        <button onclick="setMode('demo')" id="demo-toggle" class="px-8 py-2.5 rounded-lg text-sm font-bold transition-all bg-will_amber text-black shadow-lg">DEMO MODE</button>
+                        <button onclick="setMode('live')" id="live-toggle" class="px-8 py-2.5 rounded-lg text-sm font-bold transition-all text-gray-500 hover:text-white">LIVE MODE</button>
+                    </div>
+                </div>
+
+                <div id="demo-banner" class="mb-8 bg-will_amber/10 border border-will_amber/30 text-will_amber p-5 rounded-2xl flex items-center gap-4 transition-all">
+                    <i class="fa-solid fa-circle-info text-xl"></i>
+                    <span class="text-sm font-medium tracking-tight">DEMO MODE — Not connected to chain. Data is simulated for protocol demonstration.</span>
+                </div>
+                <div id="live-banner" class="mb-8 bg-will_success/10 border border-will_success/30 text-will_success p-5 rounded-2xl hidden flex items-center gap-4 transition-all">
+                    <i class="fa-solid fa-circle-check text-xl"></i>
+                    <span class="text-sm font-medium tracking-tight">LIVE MODE — Connected to Canopy Betanet (localhost:50002). Transactions will carry real value.</span>
+                </div>
+
+                <div class="glass rounded-[2rem] overflow-hidden shadow-[0_30px_60px_-15px_rgba(0,0,0,0.5)] border-will_amber/20">
+                    <div class="bg-black/60 border-b border-white/5 flex overflow-x-auto no-scrollbar">
+                        <button onclick="showTab('create')" id="tab-create" class="px-10 py-6 font-mono text-xs font-bold tracking-widest transition-all tab-active border-b-2 hover:bg-white/5 uppercase">
+                            <i class="fa-solid fa-plus-circle mr-2 opacity-70"></i>CREATE WILL
+                        </button>
+                        <button onclick="showTab('lookup')" id="tab-lookup" class="px-10 py-6 font-mono text-xs font-bold tracking-widest transition-all text-gray-500 border-b-2 border-transparent hover:bg-white/5 uppercase">
+                            <i class="fa-solid fa-eye mr-2 opacity-70"></i>LOOKUP WILL
+                        </button>
+                        <button onclick="showTab('actions')" id="tab-actions" class="px-10 py-6 font-mono text-xs font-bold tracking-widest transition-all text-gray-500 border-b-2 border-transparent hover:bg-white/5 uppercase">
+                            <i class="fa-solid fa-bolt-lightning mr-2 opacity-70"></i>ACTIONS
+                        </button>
+                        <button onclick="showTab('monitor')" id="tab-monitor" class="px-10 py-6 font-mono text-xs font-bold tracking-widest transition-all text-gray-500 border-b-2 border-transparent hover:bg-white/5 uppercase">
+                            <i class="fa-solid fa-microchip mr-2 opacity-70"></i>LIVE CHAIN
+                        </button>
+                    </div>
+
+                    <div class="p-10 md:p-14">
+                        <div id="content-create" class="grid grid-cols-1 lg:grid-cols-12 gap-16 fade-in">
+                            <div class="lg:col-span-7 space-y-10">
+                                <div class="space-y-3">
+                                    <h3 class="text-2xl font-bold flex items-center gap-3">
+                                        <span class="font-mono text-will_amber text-xs font-normal tracking-[0.3em] uppercase opacity-70">// PROTOCOL_ENTRY</span>
+                                        Lock your legacy on-chain
+                                    </h3>
+                                </div>
+                                <div class="space-y-6">
+                                    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                        <div class="space-y-2">
+                                            <label class="text-[10px] font-mono text-gray-500 uppercase tracking-[0.2em] font-bold">Owner Address</label>
+                                            <input type="text" id="create-owner" placeholder="0x..." class="w-full px-5 py-4 rounded-xl text-xs font-mono shadow-inner">
+                                        </div>
+                                        <div class="space-y-2">
+                                            <label class="text-[10px] font-mono text-gray-500 uppercase tracking-[0.2em] font-bold">Beneficiary Address</label>
+                                            <input type="text" id="create-beneficiary" placeholder="0x..." class="w-full px-5 py-4 rounded-xl text-xs font-mono shadow-inner">
+                                        </div>
+                                    </div>
+                                    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                        <div class="space-y-2">
+                                            <label class="text-[10px] font-mono text-gray-500 uppercase tracking-[0.2em] font-bold">Lock Amount (Tokens)</label>
+                                            <input type="number" id="create-amount" placeholder="1000000" class="w-full px-5 py-4 rounded-xl text-xs font-mono shadow-inner">
+                                        </div>
+                                        <div class="space-y-2">
+                                            <label class="text-[10px] font-mono text-gray-500 uppercase tracking-[0.2em] font-bold">Claim Delay (Blocks)</label>
+                                            <input type="number" id="create-blocks" placeholder="1000" class="w-full px-5 py-4 rounded-xl text-xs font-mono shadow-inner">
+                                        </div>
+                                    </div>
+                                    <div class="space-y-2">
+                                        <div class="flex justify-between items-center">
+                                            <label class="text-[10px] font-mono text-gray-500 uppercase tracking-[0.2em] font-bold">Farewell Message</label>
+                                            <span id="char-count" class="text-[10px] font-mono text-will_amber opacity-50">0 / 280</span>
+                                        </div>
+                                        <textarea id="create-message" maxlength="280" rows="4" placeholder="Leave a final message on-chain..." class="w-full px-5 py-4 rounded-xl text-xs leading-relaxed resize-none shadow-inner"></textarea>
+                                    </div>
+                                    <div class="flex flex-col md:flex-row gap-4 pt-4">
+                                        <button onclick="loadDemoData()" class="border border-will_amber text-will_amber px-6 py-4 rounded-xl font-bold text-xs uppercase tracking-widest hover:bg-will_amber/10 transition-all flex-1">LOAD DEMO DATA</button>
+                                        <button id="btn-create" onclick="simulateCreate()" class="bg-will_amber text-black px-12 py-4 rounded-xl font-bold text-xs uppercase tracking-widest hover:bg-amber-600 transition-all flex-[2] shadow-xl shadow-will_amber/20">CREATE PROTOCOL <i class="fa-solid fa-bolt ml-2"></i></button>
+                                    </div>
+                                    <div id="create-status" class="hidden glass p-5 rounded-2xl font-mono text-xs bg-will_success/5 border-will_success/30 text-will_success"></div>
+                                </div>
+                            </div>
+                            <div class="lg:col-span-5">
+                                <div class="bg-black/30 p-8 rounded-[2rem] border border-white/5 space-y-8 sticky top-24">
+                                    <span class="text-[10px] font-bold text-gray-500 block border-b border-white/10 pb-4 tracking-[0.3em] uppercase">Security Parameters</span>
+                                    <div class="space-y-5">
+                                        <div class="flex gap-5">
+                                            <div class="w-8 h-8 rounded-lg bg-will_amber/10 flex items-center justify-center text-will_amber text-xs"><i class="fa-solid fa-shield-halved"></i></div>
+                                            <div class="flex-1"><p class="text-xs font-bold text-white mb-1">Owner Immutability</p><p class="text-[10px] text-gray-500 leading-relaxed">Only the owner address can reset or cancel the will. Identity is verified via your wallet signature.</p></div>
+                                        </div>
+                                        <div class="flex gap-5">
+                                            <div class="w-8 h-8 rounded-lg bg-will_amber/10 flex items-center justify-center text-will_amber text-xs"><i class="fa-solid fa-clock-rotate-left"></i></div>
+                                            <div class="flex-1"><p class="text-xs font-bold text-white mb-1">Block-Based Timing</p><p class="text-[10px] text-gray-500 leading-relaxed">Timer is based on block height, not calendar time, ensuring mathematical certainty despite network fluctuations.</p></div>
+                                        </div>
+                                    </div>
+                                    <div class="pt-6 border-t border-white/10">
+                                        <p class="text-[10px] font-mono font-bold text-gray-400 mb-4 uppercase tracking-[0.2em] flex items-center gap-2"><i class="fa-solid fa-calculator text-will_amber/50"></i> Block Timing Estimates</p>
+                                        <div class="bg-black/20 p-4 rounded-xl space-y-3 font-mono text-[10px] text-gray-500 border border-white/5">
+                                            <div class="flex justify-between"><span>1,000 blocks</span><span class="text-white">≈ 6 hours</span></div>
+                                            <div class="flex justify-between"><span>10,000 blocks</span><span class="text-white">≈ 2.5 days</span></div>
+                                            <div class="flex justify-between"><span>100,000 blocks</span><span class="text-white">≈ 25 days</span></div>
+                                        </div>
+                                    </div>
+                                    <div class="bg-will_amber/5 p-5 rounded-2xl border border-will_amber/20">
+                                        <p class="text-[10px] text-will_amber/80 leading-relaxed italic"><i class="fa-solid fa-lightbulb mr-2"></i> Set a duration long enough to allow for travel or emergency, but short enough to be useful.</p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div id="content-lookup" class="hidden space-y-12 fade-in">
+                            <div class="flex flex-col md:flex-row items-center gap-8 pb-10 border-b border-white/10">
+                                <div class="space-y-2 flex-1">
+                                    <span class="font-mono text-will_amber text-xs font-normal tracking-[0.3em] uppercase opacity-70">// WILL_INTELLIGENCE</span>
+                                    <h3 class="text-3xl font-bold tracking-tighter">Query Will Protocol</h3>
+                                </div>
+                                <div class="flex w-full md:w-auto gap-3">
+                                    <input type="number" id="lookup-id" placeholder="Will ID" class="px-5 py-3 rounded-xl text-xs w-32 border-white/10">
+                                    <button onclick="loadDemoLookup()" class="px-6 py-3 text-[10px] font-bold text-will_amber border border-will_amber/40 rounded-xl hover:bg-will_amber/10 transition-all uppercase tracking-widest">LOAD DEMO</button>
+                                    <button id="btn-lookup" class="bg-will_amber text-black px-8 py-3 rounded-xl font-bold text-[10px] uppercase tracking-widest hover:bg-amber-600 transition-all shadow-lg shadow-will_amber/10">SEARCH <i class="fa-solid fa-magnifying-glass ml-2"></i></button>
+                                </div>
+                            </div>
+
+                            <div id="lookup-result" class="hidden animate-in fade-in slide-in-from-bottom duration-700">
+                                <div class="glass p-10 md:p-14 rounded-[3rem] border border-will_amber/20 space-y-16">
+                                    <div class="flex flex-col md:flex-row justify-between gap-10">
+                                        <div class="space-y-3">
+                                            <h4 class="text-5xl font-bold tracking-tighter" id="res-id">WILL #001</h4>
+                                            <p class="text-xs font-mono text-gray-500 uppercase tracking-[0.3em]" id="res-created">Created at block #12</p>
+                                        </div>
+                                        <div class="h-fit px-8 py-3 rounded-full border-2 border-will_success/30 text-will_success font-bold text-xs uppercase tracking-widest shadow-[0_0_20px_rgba(16,185,129,0.1)]" id="res-status-badge">ACTIVE 🟢</div>
+                                    </div>
+
+                                    <div class="grid grid-cols-1 lg:grid-cols-2 gap-20">
+                                        <div class="space-y-8">
+                                            <div class="space-y-2 border-b border-white/10 pb-5">
+                                                <span class="text-[10px] text-gray-500 font-mono uppercase tracking-[0.3em] font-bold block mb-1">Owner Entity</span>
+                                                <div class="flex items-center gap-3">
+                                                    <span class="text-sm font-mono truncate text-white/90" id="res-owner">0x4907954aad262f49b3b07635df88d0c12db327f6</span>
+                                                    <button class="text-will_amber hover:text-white transition-colors"><i class="fa-solid fa-copy text-xs"></i></button>
+                                                </div>
+                                            </div>
+                                            <div class="space-y-2 border-b border-white/10 pb-5">
+                                                <span class="text-[10px] text-gray-500 font-mono uppercase tracking-[0.3em] font-bold block mb-1">Beneficiary Entity</span>
+                                                <div class="flex items-center gap-3">
+                                                    <span class="text-sm font-mono truncate text-white/90" id="res-beneficiary">0x48729ba3b954d3a479082397cdd8c4968e56b0ab</span>
+                                                    <button class="text-will_amber hover:text-white transition-colors"><i class="fa-solid fa-copy text-xs"></i></button>
+                                                </div>
+                                            </div>
+                                            <div class="space-y-2">
+                                                <span class="text-[10px] text-gray-500 font-mono uppercase tracking-[0.3em] font-bold block mb-1">Locked Capital</span>
+                                                <span class="text-2xl font-mono font-bold text-will_amber" id="res-amount">1,000,000 CNPY</span>
+                                            </div>
+                                        </div>
+
+                                        <div class="space-y-8">
+                                            <div class="text-center lg:text-left space-y-2">
+                                                <h5 class="text-7xl font-bold tracking-tighter text-white" id="res-blocks">847</h5>
+                                                <p class="text-[10px] text-gray-500 font-mono uppercase tracking-[0.4em] font-bold italic">Blocks Pending Execution</p>
+                                                <p class="text-[10px] text-will_amber/60 font-mono mt-2">≈ 5.2 hours remaining at current cadence</p>
+                                            </div>
+                                            <div class="space-y-4">
+                                                <div class="w-full h-2.5 bg-white/5 rounded-full overflow-hidden border border-white/10">
+                                                    <div class="h-full bg-will_amber shadow-[0_0_15px_rgba(245,158,11,0.5)] transition-all duration-1000" id="res-progress" style="width: 75%"></div>
+                                                </div>
+                                                <div id="res-expired-alert" class="hidden p-4 bg-will_danger/10 border border-will_danger/30 text-will_danger rounded-2xl text-center font-bold text-[10px] uppercase tracking-[0.2em] shadow-lg animate-pulse">TIMELOCK EXPIRED — EXECUTION AVAILABLE</div>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <div class="space-y-6">
+                                        <span class="text-[10px] text-gray-500 font-mono uppercase tracking-[0.3em] font-bold block">Farewell Encrypted Message</span>
+                                        <div class="bg-black/40 p-10 rounded-[2.5rem] border border-will_amber/10 relative overflow-hidden group">
+                                            <i class="fa-solid fa-quote-left absolute top-8 left-8 text-will_amber/5 text-7xl transition-all group-hover:text-will_amber/10"></i>
+                                            <p class="text-italic text-2xl text-will_amber/90 leading-relaxed font-light indent-12 relative z-10" id="res-message">"The future belongs to those who prepare for it. Take care of the family wealth. The seed to the safe is exactly where we discussed during the summer of '22."</p>
+                                            <div class="mt-8 pt-8 border-t border-white/5 flex items-center justify-between">
+                                                <div class="flex items-center gap-3">
+                                                    <i class="fa-solid fa-fingerprint text-gray-600 text-sm"></i>
+                                                    <span class="text-[9px] text-gray-600 font-mono tracking-[0.3em] uppercase font-bold">SHA-256 Verified Integrity</span>
+                                                </div>
+                                                <span class="text-[9px] text-gray-600 font-mono tracking-[0.3em] uppercase">Permanent Metadata</span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div id="content-actions" class="hidden space-y-16 fade-in">
+                            <div class="space-y-2">
+                                <span class="font-mono text-will_amber text-xs font-normal tracking-[0.3em] uppercase opacity-70">// WILL_ACTIONS</span>
+                                <h3 class="text-3xl font-bold tracking-tighter">Execute Protocol Commands</h3>
+                            </div>
+                            <div class="grid grid-cols-1 md:grid-cols-3 gap-10">
+                                <div class="glass p-10 rounded-[2.5rem] border border-will_amber/20 space-y-6 hover:bg-will_amber/[0.03] transition-all group">
+                                    <div class="w-16 h-16 rounded-2xl bg-will_amber/20 flex items-center justify-center text-will_amber mb-6 group-hover:scale-110 transition-transform"><i class="fa-solid fa-arrows-rotate text-2xl"></i></div>
+                                    <h4 class="text-2xl font-bold">RESET TIMER</h4>
+                                    <p class="text-[10px] text-gray-500 leading-relaxed uppercase tracking-widest font-bold">Liveness Proof Trigger</p>
+                                    <p class="text-gray-500 text-sm leading-relaxed">Extends the timelock to its original duration. Proves you are still in possession of your keys.</p>
+                                    <div class="space-y-4 pt-4">
+                                        <input type="text" placeholder="Protocol Owner 0x..." class="w-full px-5 py-3.5 rounded-xl text-xs bg-black/40">
+                                        <input type="number" placeholder="Will ID" class="w-full px-5 py-3.5 rounded-xl text-xs bg-black/40">
+                                        <button class="w-full bg-will_amber text-black py-4 rounded-xl text-[10px] font-bold uppercase tracking-widest hover:bg-amber-600 transition-all shadow-lg shadow-will_amber/10">RESET TIMER <i class="fa-solid fa-chevron-right ml-1 text-[8px]"></i></button>
+                                    </div>
+                                </div>
+                                <div class="glass p-10 rounded-[2.5rem] border border-will_success/20 space-y-6 hover:bg-will_success/[0.03] transition-all group">
+                                    <div class="w-16 h-16 rounded-2xl bg-will_success/20 flex items-center justify-center text-will_success mb-6 group-hover:scale-110 transition-transform"><i class="fa-solid fa-hand-holding-dollar text-2xl"></i></div>
+                                    <h4 class="text-2xl font-bold">CLAIM ASSETS</h4>
+                                    <p class="text-[10px] text-gray-500 leading-relaxed uppercase tracking-widest font-bold">Beneficiary Execution</p>
+                                    <p class="text-gray-500 text-sm leading-relaxed">Called by the designated recipient once the timelock expires. Protocol transmits value trustlessly.</p>
+                                    <div class="space-y-4 pt-4">
+                                        <input type="text" placeholder="Beneficiary Address" class="w-full px-5 py-3.5 rounded-xl text-xs bg-black/40">
+                                        <input type="number" placeholder="Will ID" class="w-full px-5 py-3.5 rounded-xl text-xs bg-black/40">
+                                        <button class="w-full bg-will_success text-black py-4 rounded-xl text-[10px] font-bold uppercase tracking-widest hover:bg-emerald-600 transition-all shadow-lg shadow-will_success/10">CLAIM ASSETS <i class="fa-solid fa-chevron-right ml-1 text-[8px]"></i></button>
+                                    </div>
+                                </div>
+                                <div class="glass p-10 rounded-[2.5rem] border border-will_danger/20 space-y-6 hover:bg-will_danger/[0.03] transition-all group">
+                                    <div class="w-16 h-16 rounded-2xl bg-will_danger/20 flex items-center justify-center text-will_danger mb-6 group-hover:scale-110 transition-transform"><i class="fa-solid fa-skull-crossbones text-2xl"></i></div>
+                                    <h4 class="text-2xl font-bold">CANCEL WILL</h4>
+                                    <p class="text-[10px] text-gray-500 leading-relaxed uppercase tracking-widest font-bold">Emergency Termination</p>
+                                    <p class="text-gray-500 text-sm leading-relaxed">Irreversible command that returns all capital to the owner and wipes the protocol record.</p>
+                                    <div class="space-y-4 pt-4">
+                                        <input type="text" placeholder="Protocol Owner 0x..." class="w-full px-5 py-3.5 rounded-xl text-xs bg-black/40">
+                                        <input type="number" placeholder="Will ID" class="w-full px-5 py-3.5 rounded-xl text-xs bg-black/40">
+                                        <button class="w-full bg-will_danger text-black py-4 rounded-xl text-[10px] font-bold uppercase tracking-widest hover:bg-red-600 transition-all shadow-lg shadow-will_danger/10">CANCEL WILL <i class="fa-solid fa-warning ml-1 text-[8px]"></i></button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div id="content-monitor" class="hidden space-y-16 fade-in text-will_bg">
+                            <div class="flex flex-col md:flex-row md:items-center justify-between gap-6">
+                                <div class="space-y-2">
+                                    <span class="font-mono text-will_amber text-xs font-normal tracking-[0.3em] uppercase opacity-70">// NETWORK_WATCHER</span>
+                                    <h3 class="text-4xl font-bold tracking-tighter text-white">Live Chain Monitor</h3>
+                                </div>
+                                <div class="bg-black/40 px-6 py-3 rounded-xl border border-white/5 flex items-center gap-4">
+                                    <div class="flex items-center gap-2">
+                                        <span class="w-2 h-2 rounded-full bg-will_success animate-pulse"></span>
+                                        <span class="text-[10px] font-mono text-will_success uppercase font-bold tracking-widest">RPC Node 01 Online</span>
+                                    </div>
+                                    <div class="w-px h-4 bg-white/10"></div>
+                                    <span class="text-[10px] font-mono text-gray-500 uppercase tracking-widest">Lat: 22ms</span>
+                                </div>
+                            </div>
+                            
+                            <div class="grid grid-cols-1 md:grid-cols-3 gap-8">
+                                <div class="glass p-10 rounded-[2.5rem] border border-white/5 text-center space-y-2 group hover:border-will_amber/30 transition-all">
+                                    <span class="text-[10px] text-gray-500 uppercase tracking-[0.3em] font-bold block mb-4">Current Block Height</span>
+                                    <div class="text-6xl font-bold text-white tracking-tighter group-hover:text-will_amber transition-colors" id="stat-height">247</div>
+                                    <div class="text-will_success text-[9px] font-mono uppercase tracking-widest">Synced with Canon</div>
+                                </div>
+                                <div class="glass p-10 rounded-[2.5rem] border border-white/5 text-center space-y-2 group">
+                                    <span class="text-[10px] text-gray-500 uppercase tracking-[0.3em] font-bold block mb-4">Wills on Chain</span>
+                                    <div class="text-6xl font-bold text-white tracking-tighter group-hover:text-will_amber transition-colors">3</div>
+                                    <div class="text-gray-500 text-[9px] font-mono uppercase tracking-widest">Active Protocols</div>
+                                </div>
+                                <div class="glass p-10 rounded-[2.5rem] border border-white/5 text-center space-y-2 group">
+                                    <span class="text-[10px] text-gray-500 uppercase tracking-[0.3em] font-bold block mb-4">Cumulative NVL</span>
+                                    <div class="text-6xl font-bold text-white tracking-tighter group-hover:text-will_amber transition-colors">1.75M</div>
+                                    <div class="text-gray-500 text-[9px] font-mono uppercase tracking-widest font-bold">CNPY Tokens Locked</div>
+                                </div>
+                            </div>
+
+                            <div class="grid grid-cols-1 lg:grid-cols-2 gap-12">
+                                <div class="space-y-6">
+                                    <h4 class="text-[10px] font-mono font-bold text-gray-500 uppercase tracking-[0.3em]">Recent Blocks</h4>
+                                    <div id="block-list" class="space-y-4">
+                                        <!-- Block items will be injected here -->
+                                    </div>
+                                </div>
+                                <div class="space-y-6">
+                                    <h4 class="text-[10px] font-mono font-bold text-gray-500 uppercase tracking-[0.3em]">Live Activity Feed</h4>
+                                    <div id="activity-feed" class="space-y-4">
+                                        <!-- Activity items will be injected here -->
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <footer class="bg-black py-24 border-t border-white/5">
+        <div class="container mx-auto px-6 grid grid-cols-1 md:grid-cols-3 gap-16 text-center md:text-left">
+            <div class="space-y-6 flex flex-col items-center md:items-start">
+                <div class="flex items-center gap-2">
+                    <i class="fa-solid fa-vault text-will_amber text-2xl"></i>
+                    <span class="font-mono font-bold text-2xl tracking-tighter">WILLCHAIN</span>
+                </div>
+                <p class="text-sm text-gray-500 leading-relaxed font-light max-w-xs">Definitive solution for trustless wealth inheritance. Built on the Canopy Network's decentralized infrastructure.</p>
+                <div class="flex gap-4">
+                    <a href="#" class="w-10 h-10 rounded-full bg-white/5 flex items-center justify-center text-gray-400 hover:text-will_amber hover:bg-will_amber/10 transition-all"><i class="fa-brands fa-x-twitter"></i></a>
+                    <a href="#" class="w-10 h-10 rounded-full bg-white/5 flex items-center justify-center text-gray-400 hover:text-will_amber hover:bg-will_amber/10 transition-all"><i class="fa-brands fa-github"></i></a>
+                    <a href="#" class="w-10 h-10 rounded-full bg-white/5 flex items-center justify-center text-gray-400 hover:text-will_amber hover:bg-will_amber/10 transition-all"><i class="fa-brands fa-discord"></i></a>
+                </div>
+            </div>
+            <div class="flex flex-col items-center justify-center">
+                <div class="inline-block">
+                    <h5 class="text-xs font-bold text-white mb-6 uppercase tracking-[0.2em] text-center">Platform</h5>
+                    <ul class="text-[13px] text-gray-500 space-y-4 font-light text-center">
+                        <li><a href="#terminal" class="hover:text-will_amber transition-colors">Terminal</a></li>
+                        <li><a href="#terminal" class="hover:text-will_amber transition-colors">Create Will Interface</a></li>
+                        <li><a href="#terminal" class="hover:text-will_amber transition-colors">Lookup & Intelligence</a></li>
+                        <li><a href="#terminal" class="hover:text-will_amber transition-colors">Network Monitor</a></li>
+                    </ul>
+                </div>
+            </div>
+            <div class="bg-white/[0.02] border border-white/5 p-8 rounded-[2rem] space-y-6 text-left">
+                <h5 class="text-[10px] font-mono text-gray-500 mb-2 uppercase tracking-[0.3em] font-bold">Network Resilience</h5>
+                <div class="space-y-4">
+                    <div class="flex justify-between items-center">
+                        <span class="text-xs text-gray-500">Status</span>
+                        <span class="text-will_success font-bold text-[10px] uppercase tracking-widest border border-will_success/30 px-3 py-1 rounded-full">Operational</span>
+                    </div>
+                    <div class="flex justify-between items-center">
+                        <span class="text-xs text-gray-500">Block Height</span>
+                        <span class="text-white font-mono text-xs" id="footer-block">247</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="container mx-auto px-6 mt-24 pt-10 border-t border-white/5 flex flex-col md:flex-row justify-between items-center gap-8">
+            <p class="text-[9px] text-gray-600 uppercase tracking-[0.4em] font-bold">© 2026 WillChain. Secured by Canopy Network.</p>
+            <div class="flex gap-10">
+                <a href="#" class="text-[9px] text-gray-600 uppercase tracking-[0.2em] hover:text-gray-400 transition-colors">Terms of Service</a>
+                <a href="#" class="text-[9px] text-gray-600 uppercase tracking-[0.2em] hover:text-gray-400 transition-colors">Privacy Policy</a>
+                <a href="#" class="text-[9px] text-gray-600 uppercase tracking-[0.2em] hover:text-gray-400 transition-colors">Cookie Policy</a>
+            </div>
+        </div>
+    </footer>
+
+    <script>
+        const demoData = {
+            owner: '0x4907954aad262f49b3b07635df88d0c12db327f6',
+            beneficiary: '0x48729ba3b954d3a479082397cdd8c4968e56b0ab',
+            amount: '1000000',
+            blocks: '100',
+            id: 1,
+            message: 'Take care of the family. The seed phrase is in the red envelope under the floorboard in the study. Ensure the tokens are utilized for the community fund.',
+            status: 'ACTIVE',
+            currentHeight: 247
+        };
+
+        let currentMode = 'demo';
+        let blockHeight = 247;
+        let recentBlocks = [247, 246, 245, 244, 243];
+
+        function setMode(mode) {
+            currentMode = mode;
+            const demoBtn = document.getElementById('demo-toggle');
+            const liveBtn = document.getElementById('live-toggle');
+            const demoBanner = document.getElementById('demo-banner');
+            const liveBanner = document.getElementById('live-banner');
+            
+            if (mode === 'demo') {
+                demoBtn.className = 'px-8 py-2.5 rounded-lg text-sm font-bold transition-all bg-will_amber text-black shadow-lg';
+                liveBtn.className = 'px-8 py-2.5 rounded-lg text-sm font-bold transition-all text-gray-500 hover:text-white';
+                demoBanner.classList.remove('hidden');
+                liveBanner.classList.add('hidden');
+            } else {
+                liveBtn.className = 'px-8 py-2.5 rounded-lg text-sm font-bold transition-all bg-will_amber text-black shadow-lg';
+                demoBtn.className = 'px-8 py-2.5 rounded-lg text-sm font-bold transition-all text-gray-500 hover:text-white';
+                liveBanner.classList.remove('hidden');
+                demoBanner.classList.add('hidden');
+            }
+        }
+
+        function showTab(tab) {
+            const tabs = ['create', 'lookup', 'actions', 'monitor'];
+            tabs.forEach(t => {
+                document.getElementById(`content-${t}`).classList.add('hidden');
+                document.getElementById(`tab-${t}`).classList.remove('tab-active');
+                document.getElementById(`tab-${t}`).classList.add('text-gray-500');
+            });
+            document.getElementById(`content-${tab}`).classList.remove('hidden');
+            document.getElementById(`tab-${tab}`).classList.add('tab-active');
+            document.getElementById(`tab-${tab}`).classList.remove('text-gray-500');
+            
+            if (tab === 'monitor') renderBlocks();
+        }
+
+        function loadDemoData() {
+            document.getElementById('create-owner').value = demoData.owner;
+            document.getElementById('create-beneficiary').value = demoData.beneficiary;
+            document.getElementById('create-amount').value = demoData.amount;
+            document.getElementById('create-blocks').value = demoData.blocks;
+            document.getElementById('create-message').value = demoData.message;
+            updateCharCount();
+        }
+
+        function simulateCreate() {
+            const status = document.getElementById('create-status');
+            status.classList.remove('hidden');
+            status.innerHTML = `<i class="fa-solid fa-spinner fa-spin mr-3"></i> Broadcasting transaction to Canopy network...`;
+            
+            setTimeout(() => {
+                status.innerHTML = `<i class="fa-solid fa-check-circle mr-3"></i> Protocol successfully established. Will ID: <span class="font-bold">#4</span> created at block #${blockHeight}`;
+            }, 1500);
+        }
+
+        function loadDemoLookup() {
+            document.getElementById('lookup-id').value = demoData.id;
+            searchWill();
+        }
+
+        function searchWill() {
+            const result = document.getElementById('lookup-result');
+            result.classList.remove('hidden');
+            document.getElementById('res-id').innerText = `WILL #001`;
+            document.getElementById('res-owner').innerText = demoData.owner;
+            document.getElementById('res-beneficiary').innerText = demoData.beneficiary;
+            document.getElementById('res-message').innerText = demoData.message;
+            document.getElementById('res-status-badge').innerText = demoData.status + ' 🟢';
+        }
+
+        function updateCharCount() {
+            const val = document.getElementById('create-message').value;
+            document.getElementById('char-count').innerText = `${val.length} / 280`;
+        }
+
+        function renderBlocks() {
+            const list = document.getElementById('block-list');
+            list.innerHTML = recentBlocks.map(b => `
+                <div class="glass px-6 py-4 rounded-2xl flex items-center justify-between text-xs font-mono border border-white/5 hover:border-will_amber/30 transition-all">
+                    <span class="text-white opacity-40">#${b}</span>
+                    <div class="flex-1 mx-8 h-1 bg-white/5 rounded-full overflow-hidden">
+                        <div class="h-full bg-will_amber shadow-[0_0_10px_rgba(245,158,11,0.5)]" style="width: 100%"></div>
+                    </div>
+                    <div class="flex items-center gap-4">
+                        <span class="bg-will_amber/10 text-will_amber px-2 py-0.5 rounded text-[8px] font-bold">12 TX</span>
+                        <span class="text-will_success"><i class="fa-solid fa-check"></i></span>
+                    </div>
+                </div>
+            `).join('');
+
+            const feed = document.getElementById('activity-feed');
+            feed.innerHTML = `
+                <div class="text-[10px] font-mono p-4 bg-white/5 border border-white/10 rounded-2xl flex items-center gap-4 group hover:bg-will_amber/5 transition-all">
+                    <span class="w-1.5 h-1.5 rounded-full bg-will_success animate-pulse"></span>
+                    <span class="text-gray-500">Block #${blockHeight}</span>
+                    <span class="text-white/80">Will #1 timer reset by owner</span>
+                </div>
+                <div class="text-[10px] font-mono p-4 bg-white/5 border border-white/10 rounded-2xl flex items-center gap-4 group hover:bg-will_amber/5 transition-all">
+                    <span class="w-1.5 h-1.5 rounded-full bg-will_amber"></span>
+                    <span class="text-gray-500">Block #${blockHeight-1}</span>
+                    <span class="text-white/80">New protocol initiated: 50,000 CNPY</span>
+                </div>
+            `;
+        }
+
+        document.getElementById('create-message').addEventListener('input', updateCharCount);
+        document.getElementById('btn-lookup').addEventListener('click', searchWill);
+
+        async function fetchBlockHeight() {
+            if (currentMode === 'live') {
+                try {
+                    const res = await fetch('http://localhost:50002/v1/query/height');
+                    if (res.ok) {
+                        const data = await res.json();
+                        if (data.height !== blockHeight) {
+                            blockHeight = data.height;
+                            recentBlocks.unshift(blockHeight);
+                            if (recentBlocks.length > 5) recentBlocks.pop();
+                            updateHeightUI();
+                        }
+                    }
+                } catch (e) {}
+            } else {
+                if (Math.random() > 0.85) {
+                    blockHeight++;
+                    recentBlocks.unshift(blockHeight);
+                    if (recentBlocks.length > 5) recentBlocks.pop();
+                    updateHeightUI();
+                }
+            }
+        }
+
+        function updateHeightUI() {
+            document.getElementById('header-block').innerText = blockHeight;
+            document.getElementById('stat-height').innerText = blockHeight;
+            document.getElementById('footer-block').innerText = blockHeight;
+            if (!document.getElementById('content-monitor').classList.contains('hidden')) renderBlocks();
+        }
+
+        // Particles
+        const canvas = document.getElementById('particles-canvas');
+        const ctx = canvas.getContext('2d');
+        let particles = [];
+        function resize() { canvas.width = window.innerWidth; canvas.height = window.innerHeight; }
+        window.onresize = resize;
+        resize();
+        class Particle {
+            constructor() { this.reset(); }
+            reset() {
+                this.x = Math.random() * canvas.width;
+                this.y = canvas.height + 10;
+                this.speed = 0.5 + Math.random() * 1.2;
+                this.size = 0.5 + Math.random() * 1.5;
+                this.opacity = 0.05 + Math.random() * 0.3;
+            }
+            update() { this.y -= this.speed; if (this.y < -10) this.reset(); }
+            draw() {
+                ctx.fillStyle = `rgba(245, 158, 11, ${this.opacity})`;
+                ctx.beginPath(); ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2); ctx.fill();
+            }
+        }
+        for (let i = 0; i < 60; i++) particles.push(new Particle());
+        function animate() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            particles.forEach(p => { p.update(); p.draw(); });
+            requestAnimationFrame(animate);
+        }
+        animate();
+        setInterval(fetchBlockHeight, 5000);
+    </script>
+</body>
+</html>
+
