@@ -250,7 +250,7 @@
                                     </div>
                                     <div class="flex flex-col md:flex-row gap-4 pt-4">
                                         <button onclick="loadDemoData()" class="border border-will_amber text-will_amber px-6 py-4 rounded-xl font-bold text-xs uppercase tracking-widest hover:bg-will_amber/10 transition-all flex-1">LOAD DEMO DATA</button>
-                                        <button id="btn-create" onclick="simulateCreate()" class="bg-will_amber text-black px-12 py-4 rounded-xl font-bold text-xs uppercase tracking-widest hover:bg-amber-600 transition-all flex-[2] shadow-xl shadow-will_amber/20">CREATE PROTOCOL <i class="fa-solid fa-bolt ml-2"></i></button>
+                                        <button id="btn-create" onclick="handleCreateWill()" class="bg-will_amber text-black px-12 py-4 rounded-xl font-bold text-xs uppercase tracking-widest hover:bg-amber-600 transition-all flex-[2] shadow-xl shadow-will_amber/20">CREATE PROTOCOL <i class="fa-solid fa-bolt ml-2"></i></button>
                                     </div>
                                     <div id="create-status" class="hidden glass p-5 rounded-2xl font-mono text-xs bg-will_success/5 border-will_success/30 text-will_success"></div>
                                 </div>
@@ -566,6 +566,34 @@
             updateCharCount();
         }
 
+        async function handleCreateWill() {
+            if (currentMode === 'demo') { simulateCreate(); return; }
+            const owner = document.getElementById('create-owner').value;
+            const benef = document.getElementById('create-beneficiary').value;
+            const amount = parseFloat(document.getElementById('create-amount').value);
+            const blocks = parseFloat(document.getElementById('create-blocks').value);
+            const message = document.getElementById('create-message') ? document.getElementById('create-message').value : '';
+            if (!owner || !benef || !amount || !blocks) { alert('Please fill all fields'); return; }
+            const status = document.getElementById('create-status');
+            status.classList.remove('hidden');
+            status.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-3"></i> Broadcasting to Canopy chain...';
+            try {
+                const resp = await fetch('http://localhost:8080/tx', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({type:'create_will', ownerAddress:owner, beneficiaryAddress:benef, amount:amount, claimAfterBlocks:blocks, message:message})
+                });
+                const data = await resp.json();
+                if (data.success) {
+                    status.innerHTML = '<i class="fa-solid fa-check-circle mr-3"></i> Transaction confirmed! Hash: ' + data.data.raw;
+                } else {
+                    status.innerHTML = '<i class="fa-solid fa-circle-xmark mr-3"></i> Error: ' + data.error;
+                }
+            } catch(err) {
+                status.innerHTML = '<i class="fa-solid fa-circle-xmark mr-3"></i> Cannot reach proxy on port 8080';
+            }
+        }
+
         function simulateCreate() {
             const status = document.getElementById('create-status');
             status.classList.remove('hidden');
@@ -632,7 +660,7 @@
         async function fetchBlockHeight() {
             if (currentMode === 'live') {
                 try {
-                    const res = await fetch('http://localhost:50002/v1/query/height');
+                    const res = await fetch('http://localhost:8080/height');
                     if (res.ok) {
                         const data = await res.json();
                         if (data.height !== blockHeight) {
